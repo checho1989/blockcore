@@ -166,6 +166,10 @@ namespace Blockcore.Features.Wallet.Helpers
             Guard.NotEmpty(hdPath, nameof(hdPath));
 
             string[] pathElements = hdPath.Split('/');
+            if (pathElements.Length == 3)
+            {
+                return 0;
+            }
             if (pathElements.Length < 3)
                 throw new FormatException($"Could not parse CoinType from HdPath {hdPath}.");
 
