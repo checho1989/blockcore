@@ -166,7 +166,7 @@ namespace Blockcore.Features.Wallet.Helpers
             Guard.NotEmpty(hdPath, nameof(hdPath));
 
             string[] pathElements = hdPath.Split('/');
-            if (pathElements.Length == 3)
+            if (pathElements.Length == 1)
             {
                 return 0;
             }
