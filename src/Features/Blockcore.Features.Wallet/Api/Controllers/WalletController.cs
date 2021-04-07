@@ -288,6 +288,47 @@ namespace Blockcore.Features.Wallet.Api.Controllers
             }
         }
 
+        [Route("recover-via-extprivkey")]
+        [HttpPost]
+        public IActionResult RecoverViaExtKey([FromBody] WalletExtKeyRecoveryRequest request)
+        {
+            Guard.NotNull(request, nameof(request));
+
+            if (!this.ModelState.IsValid)
+            {
+                this.logger.LogTrace("(-)[MODEL_STATE_INVALID]");
+                return ModelStateErrors.BuildErrorResponse(this.ModelState);
+            }
+
+
+            try
+            {
+                this.walletManager.RecoverWallet(request.Password, request.Name, request.CreationDate, request.XPrivKey, request.Passphrase, request.CoinType);
+                this.SyncFromBestHeightForRecoveredWallets(request.CreationDate);
+
+                return this.Ok();
+
+
+            }
+            catch (WalletException e)
+            {
+                // Wallet already exists.
+                this.logger.LogError("Exception occurred: {0}", e.ToString());
+                return ErrorHelpers.BuildErrorResponse(HttpStatusCode.Conflict, e.Message, e.ToString());
+            }
+            catch (FileNotFoundException e)
+            {
+                // Wallet does not exist.
+                this.logger.LogError("Exception occurred: {0}", e.ToString());
+                return ErrorHelpers.BuildErrorResponse(HttpStatusCode.NotFound, "Wallet not found.", e.ToString());
+            }
+            catch (Exception e)
+            {
+                this.logger.LogError("Exception occurred: {0}", e.ToString());
+                return ErrorHelpers.BuildErrorResponse(HttpStatusCode.BadRequest, e.Message, e.ToString());
+            }
+        }
+
         /// <summary>
         /// Recovers a wallet using its extended public key. Note that the recovered wallet will not have a private key and is
         /// only suitable for returning the wallet history using further API calls.

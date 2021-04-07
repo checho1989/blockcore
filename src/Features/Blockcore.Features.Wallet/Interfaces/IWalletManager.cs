@@ -159,6 +159,8 @@ namespace Blockcore.Features.Wallet.Interfaces
         /// <returns></returns>
         Types.Wallet RecoverWallet(string name, ExtPubKey extPubKey, int accountIndex, DateTime creationTime);
 
+        Types.Wallet RecoverWallet(string password, string name, DateTime creationTime, string xpriv, string passphrase = null, int? coinType = null);
+
         /// <summary>
         /// Deletes a wallet.
         /// </summary>

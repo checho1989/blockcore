@@ -126,6 +126,44 @@ namespace Blockcore.Features.Wallet.Api.Models
         public int? CoinType { get; set; }
     }
 
+    public class WalletExtKeyRecoveryRequest : RequestModel
+    {
+        /// <summary>
+        /// The mnemonic that was used to create the wallet.
+        /// </summary>
+        [Required(ErrorMessage = "A xpriv is required.")]
+        public string XPrivKey { get; set; }
+
+        /// <summary>
+        /// The password that was used to create the wallet.
+        /// </summary>
+        [Required(ErrorMessage = "A password is required.")]
+        public string Password { get; set; }
+
+        /// <summary>   
+        /// The passphrase that was used to create the wallet.
+        /// </summary>
+        /// <remarks>
+        /// If the wallet was created before <see cref="Passphrase"/> was available as a parameter, set the passphrase to be the same as the password.
+        /// </remarks>
+        [Required(ErrorMessage = "A passphrase is required.", AllowEmptyStrings = true)]
+        public string Passphrase { get; set; }
+
+        /// <summary>
+        /// The name of the wallet.
+        /// </summary>
+        [Required(ErrorMessage = "The name of the wallet is missing.")]
+        public string Name { get; set; }
+
+        [JsonConverter(typeof(IsoDateTimeConverter))]
+        public DateTime CreationDate { get; set; }
+
+        /// <summary>
+        /// Optional CoinType to overwrite the default <see cref="Blockcore.Consensus.IConsensus.CoinType"/>.
+        /// </summary>
+        public int? CoinType { get; set; }
+    }
+
     /// <summary>
     /// A class containing the necessary parameters for a wallet recovery request using its extended public key.
     /// Note that the recovered wallet will not have a private key and is

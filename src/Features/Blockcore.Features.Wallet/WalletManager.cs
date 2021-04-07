@@ -461,6 +461,74 @@ namespace Blockcore.Features.Wallet
         }
 
         /// <inheritdoc />
+        public virtual Types.Wallet RecoverWallet(string password, string name, DateTime creationTime, string xpriv, string passphrase, int? coinType = null)
+        {
+            Guard.NotEmpty(password, nameof(password));
+            Guard.NotEmpty(name, nameof(name));
+            Guard.NotEmpty(xpriv, nameof(xpriv));
+            Guard.NotNull(passphrase, nameof(passphrase));
+
+            // Generate the root seed used to generate keys.
+            ExtKey extendedKey;
+        
+            try
+            {
+                extendedKey = ExtKey.Parse(xpriv, this.network);
+            }
+            catch (NotSupportedException ex)
+            {
+                this.logger.LogDebug("Exception occurred: {0}", ex.ToString());
+                this.logger.LogTrace("(-)[EXCEPTION]");
+
+                if (ex.Message == "Unknown")
+                    throw new WalletException("Please make sure you enter valid mnemonic words.");
+
+                throw;
+            }
+
+
+            // Create a wallet file.
+            string encryptedSeed = extendedKey.PrivateKey.GetEncryptedBitcoinSecret(password, this.network).ToWif();
+            Types.Wallet wallet = this.GenerateWalletFile(name, encryptedSeed, extendedKey.ChainCode, creationTime, coinType);
+
+            // Generate multiple accounts and addresses from the get-go.
+            for (int i = 0; i < WalletRecoveryAccountsCount; i++)
+            {
+                HdAccount account;
+
+                lock (this.lockObject)
+                {
+                    account = wallet.AddNewAccountElectrum(password, this.dateTimeProvider.GetTimeOffset());
+                }
+
+                IEnumerable<HdAddress> newReceivingAddresses = account.CreateAddressesElectrum(this.network, this.walletSettings.UnusedAddressesBuffer);
+                IEnumerable<HdAddress> newChangeAddresses = account.CreateAddressesElectrum(this.network, this.walletSettings.UnusedAddressesBuffer, true);
+                this.UpdateKeysLookup(wallet, newReceivingAddresses.Concat(newChangeAddresses));
+
+            }
+
+            // If the chain is downloaded, we set the height of the recovered wallet to that of the recovery date.
+            // However, if the chain is still downloading when the user restores a wallet,
+            // we wait until it is downloaded in order to set it. Otherwise, the height of the wallet may not be known.
+            if (this.ChainIndexer.IsDownloaded())
+            {
+                int blockSyncStart = this.ChainIndexer.GetHeightAtTime(creationTime);
+                this.UpdateLastBlockSyncedHeight(wallet, this.ChainIndexer.GetHeader(blockSyncStart));
+            }
+            else
+            {
+                this.UpdateWhenChainDownloaded(new[] { wallet }, creationTime);
+            }
+
+            this.SaveWallet(wallet);
+            this.Load(wallet);
+
+            return wallet;
+        }
+
+
+
+        /// <inheritdoc />
         public virtual Types.Wallet RecoverWallet(string password, string name, string mnemonic, DateTime creationTime, string passphrase, int? coinType = null)
         {
             Guard.NotEmpty(password, nameof(password));

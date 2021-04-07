@@ -232,6 +232,14 @@ namespace Blockcore.Features.Wallet.Types
             return accountRoot.AddNewAccount(password, this.EncryptedSeed, this.ChainCode, this.Network, accountCreationTime, accountIndex, accountName);
         }
 
+        public HdAccount AddNewAccountElectrum(string password, DateTimeOffset accountCreationTime, int? accountIndex = null, string accountName = null)
+        {
+            Guard.NotEmpty(password, nameof(password));
+
+            AccountRoot accountRoot = this.AccountsRoot.Single();
+            return accountRoot.AddNewAccountElectrum(password, this.EncryptedSeed, this.ChainCode, this.Network, accountCreationTime, accountIndex, accountName);
+        }
+
         /// <summary>
         /// Adds an account to the current wallet.
         /// </summary>
@@ -510,6 +518,41 @@ namespace Blockcore.Features.Wallet.Types
             return newAccount;
         }
 
+        public HdAccount AddNewAccountElectrum(string password, string encryptedSeed, byte[] chainCode, Network network, DateTimeOffset accountCreationTime, int? accountIndex = null, string accountName = null)
+        {
+            Guard.NotEmpty(password, nameof(password));
+            Guard.NotEmpty(encryptedSeed, nameof(encryptedSeed));
+            Guard.NotNull(chainCode, nameof(chainCode));
+
+            ICollection<HdAccount> hdAccounts = this.Accounts;
+
+            // If an account needs to be created at a specific index or with a specific name, make sure it doesn't already exist.
+            if (hdAccounts.Any(a => a.Index == accountIndex || a.Name == accountName))
+            {
+                throw new WalletException($"An account at index {accountIndex} or with name {accountName} already exists.");
+            }
+
+            if (accountIndex == null)
+            {
+                if (hdAccounts.Any())
+                {
+                    // Hide account indexes used for cold staking from the "Max" calculation.
+                    accountIndex = hdAccounts.Where(Wallet.NormalAccounts).Max(a => a.Index) + 1;
+                }
+                else
+                {
+                    accountIndex = 0;
+                }
+            }
+
+            HdAccount newAccount = this.CreateAccountElectrum(password, encryptedSeed, chainCode, network, accountCreationTime, accountIndex.Value, accountName);
+
+            hdAccounts.Add(newAccount);
+            this.Accounts = hdAccounts;
+
+            return newAccount;
+        }
+
         /// <summary>
         /// Create an account for a specific account index and account name pattern.
         /// </summary>
@@ -546,6 +589,33 @@ namespace Blockcore.Features.Wallet.Types
                 CreationTime = accountCreationTime
             };
         }
+
+        public HdAccount CreateAccountElectrum(string password, string encryptedSeed, byte[] chainCode,
+            Network network, DateTimeOffset accountCreationTime,
+            int newAccountIndex, string newAccountName = null)
+        {
+            if (string.IsNullOrEmpty(newAccountName))
+            {
+                newAccountName = string.Format(Wallet.AccountNamePattern, newAccountIndex);
+            }
+
+            // Get the extended pub key used to generate addresses for this account.
+            string accountHdPath = HdOperations.GetAccountHdPathElectrum(newAccountIndex);
+            Key privateKey = HdOperations.DecryptSeed(encryptedSeed, password, network);
+            ExtPubKey accountExtPubKey = HdOperations.GetExtendedPublicKey(privateKey, chainCode, accountHdPath);
+
+            return new HdAccount
+            {
+                Index = newAccountIndex,
+                ExtendedPubKey = accountExtPubKey.ToString(network),
+                ExternalAddresses = new List<HdAddress>(),
+                InternalAddresses = new List<HdAddress>(),
+                Name = newAccountName,
+                HdPath = accountHdPath,
+                CreationTime = accountCreationTime
+            };
+        }
+
 
         /// <inheritdoc cref="AddNewAccount(string, string, byte[], Network, DateTimeOffset)"/>
         /// <summary>
@@ -792,6 +862,57 @@ namespace Blockcore.Features.Wallet.Types
                 {
                     Index = i,
                     HdPath = HdOperations.CreateHdPath((int)this.GetCoinType(), this.Index, isChange, i),
+                    ScriptPubKey = address.ScriptPubKey,
+                    Pubkey = pubkey.ScriptPubKey,
+                    Bech32Address = witAddress.ToString(),
+                    Address = address.ToString(),
+                };
+
+                addresses.Add(newAddress);
+                addressesCreated.Add(newAddress);
+            }
+
+            if (isChange)
+            {
+                this.InternalAddresses = addresses;
+            }
+            else
+            {
+                this.ExternalAddresses = addresses;
+            }
+
+            return addressesCreated;
+        }
+
+
+
+        public IEnumerable<HdAddress> CreateAddressesElectrum(Network network, int addressesQuantity, bool isChange = false)
+        {
+            ICollection<HdAddress> addresses = isChange ? this.InternalAddresses : this.ExternalAddresses;
+
+            // Get the index of the last address.
+            int firstNewAddressIndex = 0;
+            if (addresses.Any())
+            {
+                firstNewAddressIndex = addresses.Max(add => add.Index) + 1;
+            }
+
+            var addressesCreated = new List<HdAddress>();
+            for (int i = firstNewAddressIndex; i < firstNewAddressIndex + addressesQuantity; i++)
+            {                
+                // Retrieve the pubkey associated with the private key of this address index.
+                PubKey pubkey = HdOperations.GeneratePublicKey(this.ExtendedPubKey, i, isChange);
+                
+                
+                // Generate the P2PKH address corresponding to the pubkey.
+                BitcoinPubKeyAddress address = pubkey.GetAddress(network);
+                BitcoinWitPubKeyAddress witAddress = pubkey.GetSegwitAddress(network);
+
+                // Add the new address details to the list of addresses.
+                var newAddress = new HdAddress
+                {
+                    Index = i,
+                    HdPath = HdOperations.CreateHdPathElectrum(isChange, i),
                     ScriptPubKey = address.ScriptPubKey,
                     Pubkey = pubkey.ScriptPubKey,
                     Bech32Address = witAddress.ToString(),
