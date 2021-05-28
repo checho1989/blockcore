@@ -16,6 +16,7 @@ using Blockcore.Utilities;
 using Blockcore.Utilities.Extensions;
 using Microsoft.Extensions.Logging;
 using NBitcoin;
+using StatsN;
 
 namespace Blockcore.Features.BlockStore
 {
@@ -95,6 +96,8 @@ namespace Blockcore.Features.BlockStore
         public ChainedHeader BlockStoreCacheTip { get; private set; }
 
         private Exception saveAsyncLoopException;
+
+        private int moneySupplyBPoS = 0;
 
         public BlockStoreQueue(
             ChainIndexer chainIndexer,
@@ -470,12 +473,51 @@ namespace Blockcore.Features.BlockStore
                 }
 
                 this.BlockStoreCacheTip = chainedHeaderBlock.ChainedHeader;
+
+                try
+                {
+                    if (this.storeTip.Height >= 45000)
+                    {
+                        int poWMoneySupply = 0;
+                        if (this.moneySupplyBPoS == 0)
+                        {
+                            var blockMined = 0;
+                            while (blockMined <= 45000)
+                            {
+                                if (this.chainIndexer.GetHeader(blockMined).Header.CheckProofOfWork() == false)
+                                {
+                                    poWMoneySupply += 1;
+                                }
+                                else
+                                {
+                                    poWMoneySupply += 12;
+                                }
+
+                                blockMined++;
+                            }
+                        }
+
+                        Statsd statsd = Statsd.New(new StatsdOptions() { HostOrIp = "127.0.0.1", Port = 8125 });
+                        var preMineValue = 300000000;
+                        var totalBlocks = chainedHeaderBlock.ChainedHeader.Height - 45000;
+                        var rewardValueFixed = totalBlocks * 1;
+
+                        var totalMoneySupply = preMineValue + poWMoneySupply + rewardValueFixed;
+                        statsd.GaugeAsync("MoneySupply", totalMoneySupply);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(ex);
+                }
+
             }
 
             this.blocksQueue.Enqueue(chainedHeaderBlock);
             this.blocksQueueSizeBytes += chainedHeaderBlock.Block.BlockSize.Value;
         }
 
+ 
         /// <summary>
         /// Dequeues the blocks continuously and saves them to the database when max batch size is reached or timer ran out.
         /// </summary>

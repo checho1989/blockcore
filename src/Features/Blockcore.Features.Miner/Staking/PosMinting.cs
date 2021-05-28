@@ -31,6 +31,7 @@ using NBitcoin;
 using NBitcoin.BuilderExtensions;
 using NBitcoin.Crypto;
 using NBitcoin.Protocol;
+using StatsN;
 
 namespace Blockcore.Features.Miner.Staking
 {
@@ -428,6 +429,9 @@ namespace Blockcore.Features.Miner.Staking
                 this.rpcGetStakingInfoModel.Difficulty = this.GetDifficulty(chainTip);
                 this.rpcGetStakingInfoModel.NetStakeWeight = this.networkWeight;
 
+                StatsPoSMinting(chainTip);
+
+
                 // Trying to create coinstake that satisfies the difficulty target, put it into a block and sign the block.
                 if (await this.StakeAndSignBlockAsync(utxoStakeDescriptions, blockTemplate, chainTip, blockTemplate.TotalFee, coinstakeTimestamp).ConfigureAwait(false))
                 {
@@ -442,6 +446,15 @@ namespace Blockcore.Features.Miner.Staking
                     await Task.Delay(TimeSpan.FromMilliseconds(this.minerSleep), cancellationToken).ConfigureAwait(false);
                 }
             }
+        }
+
+
+        private void StatsPoSMinting(ChainedHeader chainTip)
+        {
+            Statsd statsd = Statsd.New(new StatsdOptions() { HostOrIp = "127.0.0.1", Port = 8125 }); //defaults to udp
+            statsd.GaugeAsync("NetworkWeight", Convert.ToInt64(GetNetworkWeight()) / 100000000);
+            statsd.GaugeAsync("Difficulty", Convert.ToInt64(this.GetDifficulty(chainTip)));
+
         }
 
         internal List<UtxoStakeDescription> GetUtxoStakeDescriptions(WalletSecret walletSecret, CancellationToken cancellationToken)

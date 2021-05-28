@@ -12,6 +12,7 @@ using DBreeze;
 using DBreeze.DataTypes;
 using Microsoft.Extensions.Logging;
 using NBitcoin;
+using StatsN;
 
 namespace Blockcore.Features.Consensus.CoinViews.Coindb
 {
@@ -41,6 +42,8 @@ namespace Blockcore.Features.Consensus.CoinViews.Coindb
         private readonly DBreezeEngine dBreeze;
 
         private DataStoreSerializer dataStoreSerializer;
+
+        private ulong utxoBridge = 0;
 
         public DBreezeCoindb(Network network, DataFolder dataFolder, IDateTimeProvider dateTimeProvider,
             ILoggerFactory loggerFactory, INodeStats nodeStats, DataStoreSerializer dataStoreSerializer)
@@ -105,6 +108,15 @@ namespace Blockcore.Features.Consensus.CoinViews.Coindb
             using (DBreeze.Transactions.Transaction transaction = this.CreateTransaction())
             {
                 transaction.SynchronizeTables("BlockHash", "Coins");
+
+                var allutxo = transaction.Count("Coins");
+                if (allutxo != this.utxoBridge)
+                {
+                    IStatsd statsd = Statsd.New(new StatsdOptions() { HostOrIp = "127.0.0.1", Port = 8125 });
+                    statsd.GaugeAsync("utxo", (long)allutxo);
+                    this.utxoBridge = allutxo;
+                }
+
                 transaction.ValuesLazyLoadingIsOn = false;
 
                 using (new StopwatchDisposable(o => this.performanceCounter.AddQueryTime(o)))
